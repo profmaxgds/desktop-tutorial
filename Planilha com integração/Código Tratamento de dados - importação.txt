@@ -1,0 +1,217 @@
+Private Sub UserForm_Initialize()
+  '----------> Definição de limites para o Período
+   DTPDataInicial.Value = Date - 30
+   DTPDataInicial.MaxDate = Now()
+   DTPDataInicial.Enabled = False
+   DTPDataFinal.Value = Now()
+   DTPDataFinal.MinDate = DTPDataInicial.Value
+   DTPDataFinal.MaxDate = Now()
+  '----------------------------------------------------------'
+   TxtUsuario.Text = ""
+   TxtSenha.Text = ""
+   TxtSenha.PasswordChar = "*"
+   TxtSenha.MaxLength = 20
+   StrBancoLogado = False
+   SituacaoDatasBotoes
+End Sub
+Private Sub SituacaoDatasBotoes()
+   If StrBancoLogado Then
+      DTPDataInicial.Enabled = True
+      DTPDataFinal.Enabled = True
+      BtnGerar.Enabled = True
+      TxtUsuario.Enabled = False
+      TxtSenha.Enabled = False
+   
+   Else
+      DTPDataInicial.Enabled = False
+      DTPDataFinal.Enabled = False
+      BtnGerar.Enabled = False
+      TxtUsuario.Enabled = True
+      TxtSenha.Enabled = True
+   End If
+End Sub
+Sub ConectarMySql()
+    On Error GoTo TrataErro
+    
+    StrUsuario = TxtUsuario.Value
+    StrSenha = TxtSenha.Value
+    StrIp = "gestaoinfra.maquinadevendas.corp"
+    StrIp = "10.3.200.170"
+    StrBd = "bitnami_redmine"
+    Set AdoConnect = New ADODB.Connection
+    StrConnect = "Driver={MySql ODBC 5.3 ANSI Driver};Server=" & StrIp & ";Database=" & StrBd & ";Uid=" & StrUsuario & ";Pwd=" & StrSenha & ";"
+    AdoConnect.Open StrConnect
+    
+    StrBancoLogado = True
+    SituacaoDatasBotoes
+    
+    Exit Sub
+TrataErro:
+     MsgBox ("Erro ao Conectar no Banco!")
+     StrBancoLogado = False
+     SituacaoDatasBotoes
+End Sub
+Sub ImportaPlanilha()
+     Dim CabecalhoColuna    As String
+     Dim DataTemp           As Date
+     Dim ProcessouCampo     As Boolean
+     Sheets(PastaBase).Select
+     Range("A:ZZ").Select
+     Selection.ClearContents
+     Selection.ClearFormats
+    '--- Congelando a planilha
+     Application.ScreenUpdating = False
+     Worksheets(PastaBase).Cells(1, 1).Value = "#"
+     Worksheets(PastaBase).Cells(1, 2).Value = "Projeto"
+     Worksheets(PastaBase).Cells(1, 3).Value = "Tipo"
+     Worksheets(PastaBase).Cells(1, 4).Value = "Tarefa pai"
+     Worksheets(PastaBase).Cells(1, 5).Value = "Situação"
+     Worksheets(PastaBase).Cells(1, 6).Value = "Prioridade"
+     Worksheets(PastaBase).Cells(1, 7).Value = "Título"
+     Worksheets(PastaBase).Cells(1, 8).Value = "Autor"
+     Worksheets(PastaBase).Cells(1, 9).Value = "Atribuído para"
+     Worksheets(PastaBase).Cells(1, 10).Value = "Alterado em"
+     Worksheets(PastaBase).Cells(1, 11).Value = "Categoria"
+     Worksheets(PastaBase).Cells(1, 12).Value = "Versão"
+     Worksheets(PastaBase).Cells(1, 13).Value = "Início"
+     Worksheets(PastaBase).Cells(1, 14).Value = "Data prevista"
+     Worksheets(PastaBase).Cells(1, 15).Value = "Tempo estimado"
+     Worksheets(PastaBase).Cells(1, 16).Value = "Tempo gasto"
+     Worksheets(PastaBase).Cells(1, 17).Value = "% Terminado"
+     Worksheets(PastaBase).Cells(1, 18).Value = "Criado em"
+     Worksheets(PastaBase).Cells(1, 19).Value = "Concluído"
+     Worksheets(PastaBase).Cells(1, 20).Value = "Tarefas relacionadas"
+     Worksheets(PastaBase).Cells(1, 21).Value = "Setor"
+     Worksheets(PastaBase).Cells(1, 22).Value = "Privado"
+     '--- Colunas com Formula
+     Worksheets(PastaBase).Cells(1, 23).Value = "Atividades com Inicio em atraso"
+     Worksheets(PastaBase).Cells(1, 24).Value = "Atividades com Fim em atraso"
+     Worksheets(PastaBase).Cells(1, 25).Value = "Atividades Em andamento e com atraso"
+     '--- Tratar Datas
+     DtaInicial = Inverte_data(CDate(DTPDataInicial.Value))
+     DtaFinal = Inverte_data(CDate(DTPDataFinal.Value))
+     '--- Montar a Query
+     StrQuery = ""
+     StrQuery = "select ifnull(Problemas.id,0)                                                      AS 'Codigo Problema', "
+     StrQuery = StrQuery & "       ifnull(Projetos.name,'')                                         AS 'Nome Projeto', "
+     StrQuery = StrQuery & "       ifnull(Atividades.name,'')                                       AS 'Tipo', "
+     StrQuery = StrQuery & "        case "
+     StrQuery = StrQuery & "              when Projetos.parent_id  is null then ' ' "
+     StrQuery = StrQuery & "              else (Select ProjetoPai.name "
+     StrQuery = StrQuery & "                      from projects ProjetoPai "
+     StrQuery = StrQuery & "                 where ProjetoPai.id = Projetos.parent_id) "
+     StrQuery = StrQuery & "        end                                                             AS 'Tarefa Pai',   "
+     StrQuery = StrQuery & "       ifnull(SituacaoProblema.name,'')                                 AS 'Situacao',  "
+     StrQuery = StrQuery & "       ifnull(Prioridades.name,'')                                      AS 'Prioridade', "
+     StrQuery = StrQuery & "       ifnull(Problemas.subject,'')                                     AS 'Titulo', "
+     StrQuery = StrQuery & "       ifnull(Concat(UsuarioAutor.firstname, ' ' ,UsuarioAutor.lastname),'') AS 'Autor',   "
+     StrQuery = StrQuery & "       case "
+     StrQuery = StrQuery & "             when Problemas.assigned_to_id  is null then '** Nao Associado **' "
+     StrQuery = StrQuery & "             else (select  Concat(UsuarioAtrib.firstname, ' ' ,UsuarioAtrib.lastname) "
+     StrQuery = StrQuery & "                       from  users    UsuarioAtrib "
+     StrQuery = StrQuery & "                      where  Problemas.assigned_to_id = UsuarioAtrib.id ) "
+     StrQuery = StrQuery & "         end                                                            AS 'Atribuido Para',  "
+     StrQuery = StrQuery & "       ifnull(DATE_FORMAT(Problemas.updated_on,'%d/%m/%Y %H:%i:%s'),'') AS 'Alterado em',  "
+     StrQuery = StrQuery & "       case "
+     StrQuery = StrQuery & "             when Problemas.category_id is null then ' ' "
+     StrQuery = StrQuery & "             else (select Categorias.name  "
+     StrQuery = StrQuery & "                     from issue_categories Categorias "
+     StrQuery = StrQuery & "                    where Categorias.id = Problemas.category_id)  "
+     StrQuery = StrQuery & "       end                                                              AS 'Categoria', "
+     StrQuery = StrQuery & Chr(34) & "xxx" & Chr(34) & "                                            As 'Versão',   "
+     StrQuery = StrQuery & "       ifnull(DATE_FORMAT(Problemas.start_date,'%d/%m/%Y'),'')          AS 'Inicio',    "
+     StrQuery = StrQuery & "       ifnull(DATE_FORMAT(Problemas.due_date,'%d/%m/%Y'),'')            AS 'Data Prevista',   "
+     StrQuery = StrQuery & "       ifnull(Problemas.estimated_hours,0)                              AS 'Tempo Estimadas',  "
+     StrQuery = StrQuery & "       case "
+     StrQuery = StrQuery & "           when Problemas.assigned_to_id  is not  null and  "
+     StrQuery = StrQuery & "                   Problemas.assigned_to_id  <> Problemas.author_id           then "
+     StrQuery = StrQuery & "                  (select ifnull(sum(round(hours,2)),0) "
+     StrQuery = StrQuery & "                  from time_entries tempos "
+     StrQuery = StrQuery & "                 where tempos.project_id = Projetos.id "
+     StrQuery = StrQuery & "                   and tempos.user_id = Problemas.assigned_to_id "
+     StrQuery = StrQuery & "                   and tempos.issue_id = Problemas.id) "
+     StrQuery = StrQuery & "                   else  0 "
+     StrQuery = StrQuery & "         end                                                            AS 'Tempo Gasto', "
+     StrQuery = StrQuery & "       ifnull(Problemas.done_ratio,0)                                   AS '% Terminado', "
+     StrQuery = StrQuery & "       ifnull(DATE_FORMAT(Problemas.created_on,'%d/%m/%Y %H:%i:%s'),'') AS 'Criado em', "
+     StrQuery = StrQuery & "       ifnull(DATE_FORMAT(Problemas.closed_on,'%d/%m/%Y %H:%i:%s'),'')  AS 'Concluído',   "
+     StrQuery = StrQuery & Chr(34) & "XX" & Chr(34) & "                                             AS 'Tarefas relacionadas', "
+     StrQuery = StrQuery & "       ifnull(Setor.value,'')                                           AS 'Setor', "
+     StrQuery = StrQuery & "       case "
+     StrQuery = StrQuery & "            When Problemas.is_private = 0 then 'Não' "
+     StrQuery = StrQuery & "         when Problemas.is_private = 1 then 'Sim' "
+     StrQuery = StrQuery & "         else                          Problemas.is_private "
+     StrQuery = StrQuery & "       end                                                              AS 'Privado' "
+     StrQuery = StrQuery & " from  projects        Projetos, "
+     StrQuery = StrQuery & "       issues          Problemas, "
+     StrQuery = StrQuery & "       trackers        Atividades, "
+     StrQuery = StrQuery & "       users           UsuarioAutor, "
+     StrQuery = StrQuery & "       issue_statuses  SituacaoProblema, "
+     StrQuery = StrQuery & "       enumerations    Prioridades, "
+     StrQuery = StrQuery & "       custom_values   Setor "
+     StrQuery = StrQuery & " where projetos.id           = problemas.project_id    "
+     StrQuery = StrQuery & " and   Problemas.tracker_id  = Atividades.id "
+     StrQuery = StrQuery & " and   UsuarioAutor.id       = Problemas.author_id "
+     StrQuery = StrQuery & " and   Problemas.status_id   = SituacaoProblema.id "
+     StrQuery = StrQuery & " and   Problemas.priority_id = Prioridades.id "
+     StrQuery = StrQuery & " and   Prioridades.type      = 'IssuePriority' "
+     StrQuery = StrQuery & " and   Setor.customized_type = 'Issue' "
+     StrQuery = StrQuery & " and   Setor.customized_id   = Problemas.id "
+     StrQuery = StrQuery & " and   DATE_FORMAT(Problemas.created_on,'%y/%m/%d') between DATE_FORMAT('" & DtaInicial & "','%y/%m/%d') and DATE_FORMAT('" & DtaFinal & "','%y/%m/%d') "
+     StrQuery = StrQuery & " order by Projetos.name, Problemas.id "
+     Set AdoRecordSet = New ADODB.Recordset
+     AdoRecordSet.Open StrQuery, StrConnect
+     If Not AdoRecordSet.EOF Then
+        Linha = 2
+        Do While Not AdoRecordSet.EOF
+           LinhaPlanilha = LinhaPlanilha + 1
+           For Indice = 0 To 21
+               ProcessouCampo = False
+               CabecalhoColuna = LTrim(RTrim(Worksheets(PastaBase).Cells(1, Indice + 1).Value))
+               
+               If CabecalhoColuna = "Início" Or CabecalhoColuna = "Data prevista" Then
+                  If AdoRecordSet(Indice) <> "" Then
+                     DataTemp = AdoRecordSet(Indice)
+                     Worksheets(PastaBase).Cells(Linha, Indice + 1).Value = DataTemp
+                     Worksheets(PastaBase).Cells(Linha, Indice + 1).NumberFormat = "DD/MM/YYYY"
+                  End If
+                  ProcessouCampo = True
+               End If
+               If CabecalhoColuna = "Criado em" Or CabecalhoColuna = "Concluído" Or CabecalhoColuna = "Alterado em" Then
+                  Worksheets(PastaBase).Cells(Linha, Indice + 1).NumberFormat = "DD/MM/YYYY HH:MM:SS"
+               End If
+               If CabecalhoColuna = "Tempo estimado" Or CabecalhoColuna = "Tempo gasto" Then
+                  Worksheets(PastaBase).Cells(Linha, Indice + 1).NumberFormat = "0.00"
+               End If
+               If Not ProcessouCampo Then
+                  Worksheets(PastaBase).Cells(Linha, Indice + 1).Value = AdoRecordSet(Indice)
+               End If
+           Next Indice
+           Formula = "=SE($" & PegaLetraCelula(5) & Linha & "=" & Chr(34) & "Nova" & Chr(34) & ";SE(($" & PegaLetraCelula(13) & Linha & "-HOJE()<0);1;" & Chr(34) & Chr(34) & ");" & Chr(34) & Chr(34) & ")"
+           Worksheets(PastaBase).Cells(Linha, 23).FormulaLocal = Formula
+           Formula = "=SE($" & PegaLetraCelula(5) & Linha & "=" & Chr(34) & "Concluída" & Chr(34) & ";SE(($" & PegaLetraCelula(14) & Linha & "-" & PegaLetraCelula(13) & Linha & ">0);1;" & Chr(34) & Chr(34) & ");" & Chr(34) & Chr(34) & ")"
+           Worksheets(PastaBase).Cells(Linha, 24).FormulaLocal = Formula
+           Formula = "=SE($" & PegaLetraCelula(5) & Linha & "=" & Chr(34) & "Em Andamento" & Chr(34) & ";SE(($" & PegaLetraCelula(13) & Linha & "-HOJE()<0);1;" & Chr(34) & Chr(34) & ");" & Chr(34) & Chr(34) & ")"
+           Worksheets(PastaBase).Cells(Linha, 25).FormulaLocal = Formula
+           
+           AdoRecordSet.MoveNext
+           Linha = Linha + 1
+        Loop
+     End If
+    '--- Descongelando a planilha
+     Application.ScreenUpdating = True
+     MsgBox ("Fim de Importação!")
+End Sub
+Function Inverte_data(pData) As String
+    Dim DataNormal    As Date
+    Dim DataInvertida As String
+    DataNormal = (CDate(Year(pData) & "/" & Month(pData) & "/" & Day(pData)))
+    Inverte_data = Format(DataNormal, "YYYY/MM/DD")
+End Function
+Function PegaLetraCelula(ColunaX As Long)
+     Dim VetorColuna
+     VetorColuna = Split(Cells(1, ColunaX).Address(True, False), "$")
+     PegaLetraCelula = VetorColuna(0)
+End Function
+
+

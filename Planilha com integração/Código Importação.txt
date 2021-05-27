@@ -1,0 +1,21 @@
+Sub Atualizar()
+'
+' Atualizar Macro
+'
+    Dim data As Date
+    Range("T18").Select
+    ActiveSheet.PivotTables("Tabela dinâmica8").PivotCache.Refresh
+    data = Now()
+    Worksheets("base de dados").Cells(1, 26).Value = data
+    Worksheets("base de dados").Cells(1, 26).NumberFormat = "dd/mm/yyyy hh:mm"
+End Sub
+
+Sub Importar()
+    FormImportacao.Show
+    
+    Sheets("base de dados").Select
+    Columns("M:N").Select
+    Selection.NumberFormat = "m/d/yyyy"
+    Sheets("Control Book").Select
+End Sub
+
